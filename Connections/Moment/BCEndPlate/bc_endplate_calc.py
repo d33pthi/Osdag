@@ -808,31 +808,34 @@ def bc_endplate_design(uiObj):
         if plate_tk >= beam_tw:
             st_thickness = plate_tk
             break
-    st_length = st_height + 100.0
-    st_notch_top = 50.0
-    st_notch_bottom = round_up(value=weld_thickness_flange, multiplier=5, minimum_value=5)
-    st_eff_length = st_length - st_notch_bottom
+    # Length of stiffener (st_length) (as per AISC, DG 16 recommendations)
+    cf = math.pi / 180  # conversion factor to convert degree into radian
+    st_length = math.ceil(((st_height - 25) / math.tan(30 * cf)) + 25)
+    if uiObj["Weld"]["Type"] == "Fillet Weld":
+        st_notch_bottom = round_up(value=weld_thickness_flange, multiplier=5, minimum_value=5)
+        st_notch_top = st_notch_bottom
+    else:
+        st_notch_bottom = 5
+        st_notch_top = st_notch_bottom
     st_beam_weld_min = IS800_2007.cl_10_5_2_3_min_weld_size(st_thickness, beam_tf)
     st_beam_weld_max = max(beam_tf, st_thickness)
 
     if st_status is True:
+        st_force = 4 * tension_in_bolt
+        st_moment = st_force * (l_v + pitch_dist / 2)
 
         while st_length <= 1000:
             st_eff_length = st_length - st_notch_bottom
-            st_force = 4 * tension_in_bolt
-            st_moment = st_force * (l_v + pitch_dist / 2)
             st_shear_capacity = st_eff_length * st_thickness * st_fy / (math.sqrt(3) * gamma_m0)
             st_moment_capacity = st_eff_length ** 2 * st_thickness * st_fy / (4 * gamma_m0)
             available_welds = list(filter(lambda x: (st_beam_weld_min <= x <= st_beam_weld_max), welds_sizes))
             for st_beam_weld in available_welds:
-                if st_beam_weld <= st_beam_weld_min:
-                    st_beam_weld = st_beam_weld_min
                 st_beam_weld_throat = IS800_2007.cl_10_5_3_2_fillet_weld_effective_throat_thickness(
                     fillet_size=st_beam_weld, fusion_face_angle=90)
                 st_beam_weld_eff_length = IS800_2007.cl_10_5_4_1_fillet_weld_effective_length(
                     fillet_size=st_beam_weld, available_length=st_eff_length)
                 st_weld_shear_stress = st_force / (2 * st_beam_weld_eff_length * st_beam_weld_throat)
-                st_weld_moment_stress = st_moment / (2 * st_beam_weld * st_beam_weld_eff_length ** 2 / 4)
+                st_weld_moment_stress = st_moment / (2 * st_beam_weld_throat * st_beam_weld_eff_length ** 2 / 4)
                 st_eq_weld_stress = math.sqrt(st_weld_shear_stress ** 2 + st_weld_moment_stress ** 2)
                 if st_eq_weld_stress <= IS800_2007.cl_10_5_7_1_1_fillet_weld_design_stress(
                         ultimate_stresses=(weld_fu, beam_fu, st_fu)):
